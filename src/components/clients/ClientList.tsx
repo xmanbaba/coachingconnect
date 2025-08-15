@@ -1,17 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';                          // 🔥 add useEffect
 import { Search, Plus, Filter, User, Mail, Phone, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { mockClients } from '../../data/mockData';
+// import { mockClients } from '../../data/mockData';                         // 🔥 remove
+import { collection, onSnapshot } from 'firebase/firestore';                 // 🔥 add
+import { db } from '../../config/firebase';                                         // 🔥 add
+import type { Client } from '../../types';                                   // 🔥 add
 
 const ClientList: React.FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
 
-  const filteredClients = mockClients.filter(client => {
-    const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         client.industry.toLowerCase().includes(searchTerm.toLowerCase());
+  // 🔥 replace mockClients-based state with Firestore live list
+  const [clients, setClients] = useState<Client[]>([]);
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'clients'), snap =>
+      setClients(snap.docs.map(d => ({ id: d.id, ...d.data() } as Client)))
+    );
+    return unsub;
+  }, []);
+
+  const filteredClients = clients.filter(client => {
+    const matchesSearch =
+      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.industry.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === 'all' || client.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
@@ -73,16 +86,18 @@ const ClientList: React.FC = () => {
               <img
                 src={client.avatar}
                 alt={client.name}
-                className="w-12 h-12 rounded-full object-cover"
+                className="w-12 h-12 rounded-full object-cover mx-auto md:mx-0"
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-gray-900 truncate">{client.name}</h3>
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    client.status === 'active' 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
+                  <span
+                    className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      client.status === 'active'
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
                     {client.status}
                   </span>
                 </div>
@@ -110,7 +125,9 @@ const ClientList: React.FC = () => {
                 <div className="text-sm">
                   <span className="text-gray-600">Next Session:</span>
                   <span className="ml-1 font-medium text-gray-900">
-                    {client.nextSessionDate ? new Date(client.nextSessionDate).toLocaleDateString() : 'Not scheduled'}
+                    {client.nextSessionDate
+                      ? new Date(client.nextSessionDate).toLocaleDateString()
+                      : 'Not scheduled'}
                   </span>
                 </div>
                 <button

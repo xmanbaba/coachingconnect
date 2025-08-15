@@ -1,15 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, Filter, Calendar, Users, User, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { mockSessions, mockClients } from '../../data/mockData';
+import { mockClients } from '../../data/mockData';
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+import { Session, Client } from '../../types'; // Import types from index.ts
 
 const SessionList: React.FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'one-on-one' | 'group'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'scheduled' | 'completed' | 'cancelled'>('all');
+  const [sessions, setSessions] = useState<Session[]>([]); // Use Session type
 
-  const filteredSessions = mockSessions.filter(session => {
+  useEffect(() => {
+    const q = query(collection(db, 'sessions'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Session));
+      setSessions(data);
+    });
+    return unsub;
+  }, []);
+
+  const filteredSessions = sessions.filter(session => {
     const matchesSearch = session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          session.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'all' || session.type === filterType;
@@ -26,9 +39,9 @@ const SessionList: React.FC = () => {
     }
   };
 
-  const upcomingSessions = mockSessions.filter(s => s.status === 'scheduled').length;
-  const completedSessions = mockSessions.filter(s => s.status === 'completed').length;
-  const groupSessions = mockSessions.filter(s => s.type === 'group').length;
+  const upcomingSessions = sessions.filter(s => s.status === 'scheduled').length;
+  const completedSessions = sessions.filter(s => s.status === 'completed').length;
+  const groupSessions = sessions.filter(s => s.type === 'group').length;
 
   return (
     <div className="space-y-6">
@@ -62,7 +75,7 @@ const SessionList: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Sessions</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{mockSessions.length}</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">{sessions.length}</p>
             </div>
             <Calendar className="text-blue-500" size={24} />
           </div>
@@ -143,8 +156,10 @@ const SessionList: React.FC = () => {
         </div>
         <div className="divide-y divide-gray-200">
           {filteredSessions.map((session) => {
-            const clients = session.clientIds.map(id => mockClients.find(c => c.id === id)).filter(Boolean);
-            
+            const clients: Client[] = session.clientIds
+              .map((id: string) => mockClients.find(c => c.id === id))
+              .filter((client): client is Client => Boolean(client));
+
             return (
               <div
                 key={session.id}
@@ -193,14 +208,14 @@ const SessionList: React.FC = () => {
                             <div>
                               <p className="text-sm text-gray-600 mb-2">Participants:</p>
                               <div className="flex flex-wrap gap-2">
-                                {clients.map((client) => (
-                                  <div key={client?.id} className="flex items-center space-x-2 bg-gray-100 rounded-full px-3 py-1">
+                                {clients.map((client: Client) => (
+                                  <div key={client.id} className="flex items-center space-x-2 bg-gray-100 rounded-full px-3 py-1">
                                     <img
-                                      src={client?.avatar}
-                                      alt={client?.name}
+                                      src={client.avatar}
+                                      alt={client.name}
                                       className="w-5 h-5 rounded-full object-cover"
                                     />
-                                    <span className="text-xs text-gray-700">{client?.name}</span>
+                                    <span className="text-xs text-gray-700">{client.name}</span>
                                   </div>
                                 ))}
                               </div>

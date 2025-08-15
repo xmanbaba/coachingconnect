@@ -1,93 +1,172 @@
-import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, Users, User, FileText, Plus, X } from 'lucide-react';
-import { mockClients } from '../../data/mockData';
+import React, { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  Calendar,
+  Clock,
+  Users,
+  User,
+  FileText,
+  Plus,
+  X,
+} from "lucide-react";
+import { mockClients } from "../../data/mockData";
+import { collection, addDoc, Timestamp } from "firebase/firestore";
+import { db } from "../../config/firebase";
+import { useAuth } from "../../contexts/AuthContext"; // Import useAuth to get currentUser
 
 const CreateSession: React.FC = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth(); // Get authenticated user
   const [searchParams] = useSearchParams();
-  const preselectedClientId = searchParams.get('clientId');
-  const sessionType = searchParams.get('type') || 'one-on-one';
+  const preselectedClientId = searchParams.get("clientId");
+  const sessionType = searchParams.get("type") || "one-on-one";
 
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    date: '',
-    time: '',
-    duration: 60,
-    type: sessionType as 'one-on-one' | 'group',
-    clientIds: preselectedClientId ? [preselectedClientId] : [] as string[],
-    agenda: [''] as string[]
-  });
-
+const [formData, setFormData] = useState({
+  title: "",
+  description: "",
+  date: "",
+  time: "",
+  duration: 60,
+  type: sessionType as "one-on-one" | "group",
+  clientIds: preselectedClientId ? [preselectedClientId] : ([] as string[]),
+  agenda: [""] as string[],
+  coachId: currentUser?.uid || "unknown", // Fallback for debugging; ideally, this is never used
+});
+  const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const validateForm = () => {
+    if (!currentUser) {
+      setError("You must be signed in to create a session");
+      return false;
+    }
+    if (!formData.title.trim()) {
+      setError("Session title is required");
+      return false;
+    }
+    if (!formData.date) {
+      setError("Session date is required");
+      return false;
+    }
+    if (!formData.time) {
+      setError("Session time is required");
+      return false;
+    }
+    if (formData.clientIds.length === 0) {
+      setError(
+        `Please select at least one ${formData.type === "group" ? "participant" : "client"}`
+      );
+      return false;
+    }
+    if (formData.agenda.every(item => !item.trim())) {
+      setError("Please provide at least one valid agenda item");
+      return false;
+    }
+    return true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setIsSubmitting(true);
 
-    // Simulate API call
-    setTimeout(() => {
+    if (!validateForm()) {
       setIsSubmitting(false);
-      navigate('/sessions');
-    }, 1000);
+      return;
+    }
+
+    try {
+      const sessionData = {
+        ...formData,
+        status: "scheduled",
+        createdAt: Timestamp.now(), // Use Firestore Timestamp
+        agenda: formData.agenda.filter(item => item.trim()), // Remove empty agenda items
+      };
+      console.log("Submitting session data:", sessionData); // Debug log
+      await addDoc(collection(db, "sessions"), sessionData);
+      navigate("/sessions");
+    } catch (err: any) {
+      console.error("Error creating session:", err);
+      setError(err.message || "Failed to create session");
+      setIsSubmitting(false);
+    }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: name === 'duration' ? parseInt(value) : value
+      [name]: name === "duration" ? parseInt(value) : value,
     }));
   };
 
   const handleClientToggle = (clientId: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       clientIds: prev.clientIds.includes(clientId)
-        ? prev.clientIds.filter(id => id !== clientId)
-        : [...prev.clientIds, clientId]
+        ? prev.clientIds.filter((id) => id !== clientId)
+        : [...prev.clientIds, clientId],
     }));
   };
 
   const addAgendaItem = () => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      agenda: [...prev.agenda, '']
+      agenda: [...prev.agenda, ""],
     }));
   };
 
   const removeAgendaItem = (index: number) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      agenda: prev.agenda.filter((_, i) => i !== index)
+      agenda: prev.agenda.filter((_, i) => i !== index),
     }));
   };
 
   const updateAgendaItem = (index: number, value: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      agenda: prev.agenda.map((item, i) => i === index ? value : item)
+      agenda: prev.agenda.map((item, i) => (i === index ? value : item)),
     }));
   };
 
-  const selectedClients = mockClients.filter(client => formData.clientIds.includes(client.id));
+  const selectedClients = mockClients.filter((client) =>
+    formData.clientIds.includes(client.id)
+  );
+
+  if (!currentUser) {
+    return <div className="text-red-600 p-6">Please sign in to create a session</div>;
+  }
 
   return (
     <div className="space-y-6">
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg">
+          {error}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center space-x-4">
         <button
-          onClick={() => navigate('/sessions')}
+          onClick={() => navigate("/sessions")}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <ArrowLeft size={20} />
         </button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Create {formData.type === 'group' ? 'Group' : 'One-on-One'} Session
+            Create {formData.type === "group" ? "Group" : "One-on-One"} Session
           </h1>
-          <p className="text-gray-600">Schedule a new coaching session with your clients.</p>
+          <p className="text-gray-600">
+            Schedule a new coaching session with your clients.
+          </p>
         </div>
       </div>
 
@@ -102,11 +181,17 @@ const CreateSession: React.FC = () => {
             <div className="flex bg-gray-100 rounded-lg p-1">
               <button
                 type="button"
-                onClick={() => setFormData(prev => ({ ...prev, type: 'one-on-one', clientIds: prev.clientIds.slice(0, 1) }))}
+                onClick={() =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    type: "one-on-one",
+                    clientIds: prev.clientIds.slice(0, 1),
+                  }))
+                }
                 className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center space-x-2 ${
-                  formData.type === 'one-on-one'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                  formData.type === "one-on-one"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
                 }`}
               >
                 <User size={16} />
@@ -114,11 +199,13 @@ const CreateSession: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setFormData(prev => ({ ...prev, type: 'group' }))}
+                onClick={() =>
+                  setFormData((prev) => ({ ...prev, type: "group" }))
+                }
                 className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors flex items-center justify-center space-x-2 ${
-                  formData.type === 'group'
-                    ? 'bg-white text-purple-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                  formData.type === "group"
+                    ? "bg-white text-purple-600 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
                 }`}
               >
                 <Users size={16} />
@@ -129,7 +216,10 @@ const CreateSession: React.FC = () => {
 
           {/* Session Title */}
           <div>
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="title"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Session Title *
             </label>
             <input
@@ -146,7 +236,10 @@ const CreateSession: React.FC = () => {
 
           {/* Session Description */}
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="description"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Description
             </label>
             <textarea
@@ -163,11 +256,17 @@ const CreateSession: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Date */}
             <div>
-              <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="date"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Date *
               </label>
               <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <Calendar
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                  size={20}
+                />
                 <input
                   type="date"
                   id="date"
@@ -175,7 +274,7 @@ const CreateSession: React.FC = () => {
                   required
                   value={formData.date}
                   onChange={handleChange}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={new Date().toISOString().split("T")[0]}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 />
               </div>
@@ -183,11 +282,17 @@ const CreateSession: React.FC = () => {
 
             {/* Time */}
             <div>
-              <label htmlFor="time" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="time"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Time *
               </label>
               <div className="relative">
-                <Clock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <Clock
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                  size={20}
+                />
                 <input
                   type="time"
                   id="time"
@@ -202,7 +307,10 @@ const CreateSession: React.FC = () => {
 
             {/* Duration */}
             <div>
-              <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="duration"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Duration (minutes) *
               </label>
               <select
@@ -225,13 +333,18 @@ const CreateSession: React.FC = () => {
           {/* Client Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {formData.type === 'group' ? 'Select Participants *' : 'Select Client *'}
+              {formData.type === "group"
+                ? "Select Participants *"
+                : "Select Client *"}
             </label>
             <div className="border border-gray-300 rounded-lg p-4 max-h-60 overflow-y-auto">
               {mockClients.map((client) => (
-                <div key={client.id} className="flex items-center space-x-3 py-2">
+                <div
+                  key={client.id}
+                  className="flex items-center space-x-3 py-2"
+                >
                   <input
-                    type={formData.type === 'one-on-one' ? 'radio' : 'checkbox'}
+                    type={formData.type === "one-on-one" ? "radio" : "checkbox"}
                     id={`client-${client.id}`}
                     name="clientIds"
                     checked={formData.clientIds.includes(client.id)}
@@ -244,27 +357,35 @@ const CreateSession: React.FC = () => {
                     className="w-8 h-8 rounded-full object-cover"
                   />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{client.name}</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {client.name}
+                    </p>
                     <p className="text-xs text-gray-500">{client.industry}</p>
                   </div>
                 </div>
               ))}
             </div>
-            
+
             {selectedClients.length > 0 && (
               <div className="mt-3 p-3 bg-blue-50 rounded-lg">
                 <p className="text-sm font-medium text-blue-900 mb-2">
-                  Selected {formData.type === 'group' ? 'Participants' : 'Client'}:
+                  Selected{" "}
+                  {formData.type === "group" ? "Participants" : "Client"}:
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {selectedClients.map((client) => (
-                    <div key={client.id} className="flex items-center space-x-2 bg-white rounded-full px-3 py-1 border">
+                    <div
+                      key={client.id}
+                      className="flex items-center space-x-2 bg-white rounded-full px-3 py-1 border"
+                    >
                       <img
                         src={client.avatar}
                         alt={client.name}
                         className="w-5 h-5 rounded-full object-cover"
                       />
-                      <span className="text-sm text-gray-700">{client.name}</span>
+                      <span className="text-sm text-gray-700">
+                        {client.name}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -321,9 +442,25 @@ const CreateSession: React.FC = () => {
             >
               {isSubmitting ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                   Creating Session...
                 </>
@@ -336,7 +473,7 @@ const CreateSession: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => navigate('/sessions')}
+              onClick={() => navigate("/sessions")}
               className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2 rounded-lg transition-colors"
             >
               Cancel

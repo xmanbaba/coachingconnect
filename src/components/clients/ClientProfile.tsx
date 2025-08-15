@@ -1,26 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';                          // 🔥 add useEffect
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  Mail, 
-  Phone, 
-  Calendar, 
-  Target, 
-  Edit, 
+import {
+  ArrowLeft,
+  Mail,
+  Phone,
+  Calendar,
+  Target,
+  Edit,
   Plus,
   CheckSquare,
   Clock,
   User
 } from 'lucide-react';
-import { mockClients, mockSessions, mockTasks } from '../../data/mockData';
+// import { mockClients, mockSessions, mockTasks } from '../../data/mockData'; // 🔥 remove
+import { doc, onSnapshot } from 'firebase/firestore';                        // 🔥 add
+import { db } from '../../config/firebase';                                         // 🔥 add
+import type { Client } from '../../types';                                   // 🔥 add
 
 const ClientProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'tasks' | 'timeline'>('overview');
 
-  const client = mockClients.find(c => c.id === id);
-  
+  // 🔥 live client doc
+  const [client, setClient] = useState<Client | null>(null);
+  useEffect(() => {
+    if (!id) return;
+    const unsub = onSnapshot(doc(db, 'clients', id), snap =>
+      setClient(snap.exists() ? ({ id: snap.id, ...snap.data() } as Client) : null)
+    );
+    return unsub;
+  }, [id]);
+
   if (!client) {
     return (
       <div className="text-center py-12">
@@ -35,11 +46,9 @@ const ClientProfile: React.FC = () => {
     );
   }
 
-  const clientSessions = mockSessions.filter(session => 
-    session.clientIds.includes(client.id)
-  ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  const clientTasks = mockTasks.filter(task => task.clientId === client.id);
+  // 🔥 TODO: sessions/tasks will be fetched from Firestore later; keep empty arrays for now
+  const clientSessions: any[] = [];
+  const clientTasks: any[] = [];
   const completedTasks = clientTasks.filter(task => task.status === 'completed');
   const pendingTasks = clientTasks.filter(task => task.status !== 'completed');
 
@@ -62,7 +71,9 @@ const ClientProfile: React.FC = () => {
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
-          <p className="text-gray-600">{client.industry} • Client since {new Date(client.joinedAt).toLocaleDateString()}</p>
+          <p className="text-gray-600">
+            {client.industry} • Client since {new Date(client.joinedAt).toLocaleDateString()}
+          </p>
         </div>
         <button
           onClick={() => navigate(`/clients/${client.id}/edit`)}
@@ -109,11 +120,13 @@ const ClientProfile: React.FC = () => {
                   <CheckSquare size={16} />
                   <span className="text-sm">Status</span>
                 </div>
-                <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full mt-1 ${
-                  client.status === 'active' 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
+                <span
+                  className={`inline-block px-2 py-1 text-xs font-medium rounded-full mt-1 ${
+                    client.status === 'active'
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}
+                >
                   {client.status}
                 </span>
               </div>
@@ -147,7 +160,9 @@ const ClientProfile: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600">Next Session</p>
               <p className="text-lg font-semibold text-gray-900 mt-2">
-                {client.nextSessionDate ? new Date(client.nextSessionDate).toLocaleDateString() : 'Not scheduled'}
+                {client.nextSessionDate
+                  ? new Date(client.nextSessionDate).toLocaleDateString()
+                  : 'Not scheduled'}
               </p>
             </div>
             <Calendar className="text-blue-500" size={24} />
@@ -171,11 +186,11 @@ const ClientProfile: React.FC = () => {
               >
                 <span>{tab.label}</span>
                 {tab.count !== null && (
-                  <span className={`px-2 py-1 text-xs rounded-full ${
-                    activeTab === tab.id
-                      ? 'bg-blue-100 text-blue-600'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}>
+                  <span
+                    className={`px-2 py-1 text-xs rounded-full ${
+                      activeTab === tab.id ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
                     {tab.count}
                   </span>
                 )}
@@ -198,7 +213,7 @@ const ClientProfile: React.FC = () => {
                   ))}
                 </div>
               </div>
-              
+
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
                 <div className="space-y-4">
@@ -207,13 +222,19 @@ const ClientProfile: React.FC = () => {
                       <Calendar className="text-blue-500" size={20} />
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">{session.title}</p>
-                        <p className="text-sm text-gray-600">{new Date(session.date).toLocaleDateString()} • {session.duration} minutes</p>
+                        <p className="text-sm text-gray-600">
+                          {new Date(session.date).toLocaleDateString()} • {session.duration} minutes
+                        </p>
                       </div>
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        session.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        session.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
+                      <span
+                        className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          session.status === 'completed'
+                            ? 'bg-green-100 text-green-800'
+                            : session.status === 'scheduled'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
                         {session.status}
                       </span>
                     </div>
@@ -236,17 +257,22 @@ const ClientProfile: React.FC = () => {
                 </button>
               </div>
               {clientSessions.map((session) => (
-                <div 
-                  key={session.id} 
+                <div
+                  key={session.id}
                   className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                   onClick={() => navigate(`/sessions/${session.id}`)}
                 >
                   <div className="flex-shrink-0">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      session.type === 'group' ? 'bg-purple-100' : 'bg-blue-100'
-                    }`}>
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        session.type === 'group' ? 'bg-purple-100' : 'bg-blue-100'
+                      }`}
+                    >
                       {session.type === 'group' ? (
-                        <User className={session.type === 'group' ? 'text-purple-600' : 'text-blue-600'} size={20} />
+                        <User
+                          className={session.type === 'group' ? 'text-purple-600' : 'text-blue-600'}
+                          size={20}
+                        />
                       ) : (
                         <Calendar className="text-blue-600" size={20} />
                       )}
@@ -257,15 +283,17 @@ const ClientProfile: React.FC = () => {
                     <p className="text-sm text-gray-600">
                       {new Date(session.date).toLocaleDateString()} at {session.time} • {session.duration} minutes
                     </p>
-                    {session.type === 'group' && (
-                      <p className="text-sm text-purple-600">Group Session</p>
-                    )}
+                    {session.type === 'group' && <p className="text-sm text-purple-600">Group Session</p>}
                   </div>
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    session.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    session.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
+                  <span
+                    className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      session.status === 'completed'
+                        ? 'bg-green-100 text-green-800'
+                        : session.status === 'scheduled'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
                     {session.status}
                   </span>
                 </div>
@@ -286,29 +314,37 @@ const ClientProfile: React.FC = () => {
                 </button>
               </div>
               {clientTasks.map((task) => (
-                <div 
+                <div
                   key={task.id}
                   className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
                   onClick={() => navigate(`/tasks/${task.id}`)}
                 >
-                  <div className={`w-3 h-3 rounded-full flex-shrink-0 ${
-                    task.status === 'completed' ? 'bg-green-500' :
-                    task.status === 'in-progress' ? 'bg-yellow-500' :
-                    'bg-gray-400'
-                  }`} />
+                  <div
+                    className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                      task.status === 'completed'
+                        ? 'bg-green-500'
+                        : task.status === 'in-progress'
+                        ? 'bg-yellow-500'
+                        : 'bg-gray-400'
+                    }`}
+                  />
                   <div className="flex-1">
                     <p className="font-medium text-gray-900">{task.title}</p>
                     <p className="text-sm text-gray-600">{task.description}</p>
                     <p className="text-sm text-gray-500">
-                      Due: {new Date(task.dueDate).toLocaleDateString()} • 
+                      Due: {new Date(task.dueDate).toLocaleDateString()} •
                       <span className="capitalize"> {task.priority} priority</span>
                     </p>
                   </div>
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    task.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    task.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
+                  <span
+                    className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      task.status === 'completed'
+                        ? 'bg-green-100 text-green-800'
+                        : task.status === 'in-progress'
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
                     {task.status.replace('-', ' ')}
                   </span>
                 </div>
@@ -322,46 +358,69 @@ const ClientProfile: React.FC = () => {
               <div className="relative">
                 <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
                 <div className="space-y-6">
-                  {/* Combine sessions and tasks, sort by date */}
                   {[...clientSessions, ...clientTasks]
-                    .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime())
+                    .sort(
+                      (a, b) =>
+                        new Date(b.createdAt || b.date).getTime() -
+                        new Date(a.createdAt || a.date).getTime()
+                    )
                     .slice(0, 10)
-                    .map((item, index) => {
+                    .map((item) => {
                       const isSession = 'clientIds' in item;
                       return (
-                        <div key={`${isSession ? 'session' : 'task'}-${item.id}`} className="relative flex items-start">
-                          <div className={`absolute left-2 w-4 h-4 rounded-full border-2 border-white ${
-                            isSession 
-                              ? (item.status === 'completed' ? 'bg-green-500' : 'bg-blue-500')
-                              : (item.status === 'completed' ? 'bg-green-500' : 
-                                 item.status === 'in-progress' ? 'bg-yellow-500' : 'bg-gray-400')
-                          }`}></div>
+                        <div
+                          key={`${isSession ? 'session' : 'task'}-${item.id}`}
+                          className="relative flex items-start"
+                        >
+                          <div
+                            className={`absolute left-2 w-4 h-4 rounded-full border-2 border-white ${
+                              isSession
+                                ? item.status === 'completed'
+                                  ? 'bg-green-500'
+                                  : 'bg-blue-500'
+                                : item.status === 'completed'
+                                ? 'bg-green-500'
+                                : item.status === 'in-progress'
+                                ? 'bg-yellow-500'
+                                : 'bg-gray-400'
+                            }`}
+                          ></div>
                           <div className="ml-10 bg-white border border-gray-200 rounded-lg p-4 w-full">
                             <div className="flex items-center justify-between">
                               <h4 className="font-medium text-gray-900">
                                 {isSession ? (item as any).title : (item as any).title}
                               </h4>
                               <span className="text-sm text-gray-500">
-                                {new Date(isSession ? (item as any).date : (item as any).createdAt).toLocaleDateString()}
+                                {new Date(
+                                  isSession ? (item as any).date : (item as any).createdAt
+                                ).toLocaleDateString()}
                               </span>
                             </div>
                             <p className="text-sm text-gray-600 mt-1">
-                              {isSession 
+                              {isSession
                                 ? `${(item as any).type} session • ${(item as any).duration} minutes`
-                                : `Task • ${(item as any).priority} priority`
-                              }
+                                : `Task • ${(item as any).priority} priority`}
                             </p>
                             <div className="flex items-center justify-between mt-2">
-                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                item.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                item.status === 'in-progress' ? 'bg-yellow-100 text-yellow-800' :
-                                item.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
+                              <span
+                                className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                  item.status === 'completed'
+                                    ? 'bg-green-100 text-green-800'
+                                    : item.status === 'in-progress'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : item.status === 'scheduled'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}
+                              >
                                 {item.status.replace('-', ' ')}
                               </span>
                               <button
-                                onClick={() => navigate(isSession ? `/sessions/${item.id}` : `/tasks/${item.id}`)}
+                                onClick={() =>
+                                  navigate(
+                                    isSession ? `/sessions/${item.id}` : `/tasks/${item.id}`
+                                  )
+                                }
                                 className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                               >
                                 View details
