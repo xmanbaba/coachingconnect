@@ -1,20 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Calendar, User, AlertCircle, CheckSquare } from 'lucide-react';
-import { collection, addDoc, Timestamp, onSnapshot } from 'firebase/firestore';
+import { collection, doc, updateDoc, onSnapshot, getDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import type { Client } from '../../types';
+import type { Client, Task } from '../../types';
 
-const CreateTask: React.FC = () => {
+const EditTask: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [searchParams] = useSearchParams();
-  const preselectedClientId = searchParams.get('clientId');
+  const { id } = useParams<{ id: string }>();
+  
+  const [clients, setClients] = useState<Client[]>([]);
+  const [task, setTask] = useState<Task | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    dueDate: '',
+    priority: 'medium' as 'low' | 'medium' | 'high',
+    clientId: '',
+    sessionId: '',
+    status: 'pending' as 'pending' | 'in-progress' | 'completed'
+  });
+  
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch clients from Firestore
-  const [clients, setClients] = useState<Client[]>([]);
-
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'clients'), (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
@@ -23,21 +37,59 @@ const CreateTask: React.FC = () => {
     return unsub;
   }, []);
 
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    dueDate: '',
-    priority: 'medium' as 'low' | 'medium' | 'high',
-    clientId: preselectedClientId || '',
-    sessionId: ''
-  });
+  // Fetch task data
+  useEffect(() => {
+    const fetchTask = async () => {
+      if (!id || !currentUser) {
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        const taskDoc = await getDoc(doc(db, 'tasks', id));
+        if (taskDoc.exists()) {
+          const taskData = {
+            id: taskDoc.id,
+            ...taskDoc.data(),
+            createdAt: taskDoc.data().createdAt?.toDate?.()?.toISOString() || taskDoc.data().createdAt,
+          } as Task;
+          
+          // Check if current user is authorized to edit this task
+          if (taskData.assignedBy !== currentUser.uid) {
+            setError("You are not authorized to edit this task");
+            setLoading(false);
+            return;
+          }
+          
+          setTask(taskData);
+          
+          // Populate form with task data
+          setFormData({
+            title: taskData.title,
+            description: taskData.description,
+            dueDate: taskData.dueDate,
+            priority: taskData.priority,
+            clientId: taskData.clientId,
+            sessionId: taskData.sessionId || '',
+            status: taskData.status
+          });
+        } else {
+          setError("Task not found");
+        }
+      } catch (err: any) {
+        console.error("Error fetching task:", err);
+        setError("Failed to load task data");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+    fetchTask();
+  }, [id, currentUser]);
 
   const validateForm = () => {
     if (!currentUser) {
-      setError("You must be signed in to create a task");
+      setError("You must be signed in to edit a task");
       return false;
     }
     if (!formData.title.trim()) {
@@ -64,7 +116,7 @@ const CreateTask: React.FC = () => {
     setError(null);
     setIsSubmitting(true);
 
-    if (!validateForm()) {
+    if (!validateForm() || !id) {
       setIsSubmitting(false);
       return;
     }
@@ -74,20 +126,19 @@ const CreateTask: React.FC = () => {
         title: formData.title.trim(),
         description: formData.description.trim(),
         dueDate: formData.dueDate,
-        status: 'pending' as const,
         priority: formData.priority,
         clientId: formData.clientId,
         sessionId: formData.sessionId || null,
-        assignedBy: currentUser?.uid || 'unknown',
-        createdAt: Timestamp.now(),
+        status: formData.status,
+        updatedAt: Timestamp.now(),
       };
-
-      console.log("Submitting task data:", taskData);
-      await addDoc(collection(db, "tasks"), taskData);
-      navigate('/tasks');
+      
+      console.log("Updating task data:", taskData);
+      await updateDoc(doc(db, "tasks", id), taskData);
+      navigate("/tasks");
     } catch (err: any) {
-      console.error("Error creating task:", err);
-      setError(err.message || "Failed to create task");
+      console.error("Error updating task:", err);
+      setError(err.message || "Failed to update task");
       setIsSubmitting(false);
     }
   };
@@ -103,7 +154,29 @@ const CreateTask: React.FC = () => {
   const selectedClient = clients.find(c => c.id === formData.clientId);
 
   if (!currentUser) {
-    return <div className="text-red-600 p-6">Please sign in to create a task</div>;
+    return <div className="text-red-600 p-6">Please sign in to edit a task</div>;
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Loading task...</div>
+      </div>
+    );
+  }
+
+  if (error && !task) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-600 mb-4">{error}</p>
+        <button
+          onClick={() => navigate('/tasks')}
+          className="text-blue-600 hover:text-blue-700"
+        >
+          Back to tasks
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -118,14 +191,14 @@ const CreateTask: React.FC = () => {
       {/* Header */}
       <div className="flex items-center space-x-4">
         <button
-          onClick={() => navigate('/tasks')}
+          onClick={() => navigate("/tasks")}
           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
         >
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Create New Task</h1>
-          <p className="text-gray-600">Assign a new task to a client with specific goals and deadlines.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Edit Task</h1>
+          <p className="text-gray-600">Update task details and requirements.</p>
         </div>
       </div>
 
@@ -206,7 +279,7 @@ const CreateTask: React.FC = () => {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Due Date */}
             <div>
               <label htmlFor="dueDate" className="block text-sm font-medium text-gray-700 mb-2">
@@ -221,7 +294,6 @@ const CreateTask: React.FC = () => {
                   required
                   value={formData.dueDate}
                   onChange={handleChange}
-                  min={new Date().toISOString().split('T')[0]}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 />
               </div>
@@ -247,23 +319,32 @@ const CreateTask: React.FC = () => {
                   <option value="high">High Priority</option>
                 </select>
               </div>
-              <div className="mt-2 text-sm text-gray-500">
-                {formData.priority === 'high' && '🔴 High priority tasks require immediate attention'}
-                {formData.priority === 'medium' && '🟡 Medium priority tasks should be completed within the timeline'}
-                {formData.priority === 'low' && '🟢 Low priority tasks can be completed when time permits'}
-              </div>
+            </div>
+
+            {/* Status */}
+            <div>
+              <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-2">
+                Status *
+              </label>
+              <select
+                id="status"
+                name="status"
+                required
+                value={formData.status}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none appearance-none bg-white"
+              >
+                <option value="pending">Pending</option>
+                <option value="in-progress">In Progress</option>
+                <option value="completed">Completed</option>
+              </select>
             </div>
           </div>
 
-          {/* Task Guidelines */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h4 className="text-sm font-medium text-gray-900 mb-2">Task Creation Guidelines</h4>
-            <ul className="text-sm text-gray-600 space-y-1">
-              <li>• Make tasks specific, measurable, and actionable</li>
-              <li>• Provide clear expectations and success criteria</li>
-              <li>• Set realistic deadlines based on task complexity</li>
-              <li>• Include any necessary resources or references</li>
-            </ul>
+          <div className="mt-4 text-sm text-gray-500">
+            {formData.priority === 'high' && '🔴 High priority tasks require immediate attention'}
+            {formData.priority === 'medium' && '🟡 Medium priority tasks should be completed within the timeline'}
+            {formData.priority === 'low' && '🟢 Low priority tasks can be completed when time permits'}
           </div>
 
           {/* Action Buttons */}
@@ -279,18 +360,18 @@ const CreateTask: React.FC = () => {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Creating Task...
+                  Updating Task...
                 </>
               ) : (
                 <>
                   <CheckSquare size={20} />
-                  <span>Create Task</span>
+                  <span>Update Task</span>
                 </>
               )}
             </button>
             <button
               type="button"
-              onClick={() => navigate('/tasks')}
+              onClick={() => navigate("/tasks")}
               className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2 rounded-lg transition-colors"
             >
               Cancel
@@ -302,4 +383,4 @@ const CreateTask: React.FC = () => {
   );
 };
 
-export default CreateTask;
+export default EditTask;

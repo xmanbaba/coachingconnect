@@ -1,16 +1,62 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, Filter, CheckSquare, Clock, AlertTriangle, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { mockTasks, mockClients } from '../../data/mockData';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import type { Task, Client } from '../../types';
 
 const TaskList: React.FC = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'in-progress' | 'completed'>('all');
   const [filterPriority, setFilterPriority] = useState<'all' | 'low' | 'medium' | 'high'>('all');
+  
+  // Fetch data from Firestore
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredTasks = mockTasks.filter(task => {
-    const client = mockClients.find(c => c.id === task.clientId);
+  // Fetch tasks from Firestore
+  useEffect(() => {
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
+
+    const unsubTasks = onSnapshot(
+      query(collection(db, 'tasks'), where('assignedBy', '==', currentUser.uid)),
+      (snap) => {
+        const data = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          // Convert Firestore timestamp to string if needed
+          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
+        } as Task));
+        setTasks(data);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching tasks:", error);
+        setLoading(false);
+      }
+    );
+
+    return unsubTasks;
+  }, [currentUser]);
+
+  // Fetch clients from Firestore
+  useEffect(() => {
+    const unsubClients = onSnapshot(collection(db, 'clients'), (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+      setClients(data);
+    });
+    return unsubClients;
+  }, []);
+
+  const filteredTasks = tasks.filter(task => {
+    const client = clients.find(c => c.id === task.clientId);
     const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          task.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          client?.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -38,6 +84,24 @@ const TaskList: React.FC = () => {
   const isOverdue = (dueDate: string, status: string) => {
     return status !== 'completed' && new Date(dueDate) < new Date();
   };
+
+  // Calculate stats
+  const totalTasks = tasks.length;
+  const completedTasks = tasks.filter(t => t.status === 'completed').length;
+  const inProgressTasks = tasks.filter(t => t.status === 'in-progress').length;
+  const overdueTasks = tasks.filter(t => isOverdue(t.dueDate, t.status)).length;
+
+  if (!currentUser) {
+    return <div className="text-red-600 p-6">Please sign in to view tasks</div>;
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Loading tasks...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -103,7 +167,7 @@ const TaskList: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Tasks</p>
-              <p className="text-3xl font-bold text-gray-900 mt-2">{mockTasks.length}</p>
+              <p className="text-3xl font-bold text-gray-900 mt-2">{totalTasks}</p>
             </div>
             <CheckSquare className="text-blue-500" size={24} />
           </div>
@@ -112,9 +176,7 @@ const TaskList: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Completed</p>
-              <p className="text-3xl font-bold text-green-600 mt-2">
-                {mockTasks.filter(t => t.status === 'completed').length}
-              </p>
+              <p className="text-3xl font-bold text-green-600 mt-2">{completedTasks}</p>
             </div>
             <CheckSquare className="text-green-500" size={24} />
           </div>
@@ -123,9 +185,7 @@ const TaskList: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">In Progress</p>
-              <p className="text-3xl font-bold text-yellow-600 mt-2">
-                {mockTasks.filter(t => t.status === 'in-progress').length}
-              </p>
+              <p className="text-3xl font-bold text-yellow-600 mt-2">{inProgressTasks}</p>
             </div>
             <Clock className="text-yellow-500" size={24} />
           </div>
@@ -134,9 +194,7 @@ const TaskList: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Overdue</p>
-              <p className="text-3xl font-bold text-red-600 mt-2">
-                {mockTasks.filter(t => isOverdue(t.dueDate, t.status)).length}
-              </p>
+              <p className="text-3xl font-bold text-red-600 mt-2">{overdueTasks}</p>
             </div>
             <AlertTriangle className="text-red-500" size={24} />
           </div>
@@ -150,7 +208,7 @@ const TaskList: React.FC = () => {
         </div>
         <div className="divide-y divide-gray-200">
           {filteredTasks.map((task) => {
-            const client = mockClients.find(c => c.id === task.clientId);
+            const client = clients.find(c => c.id === task.clientId);
             const overdue = isOverdue(task.dueDate, task.status);
             
             return (
@@ -180,7 +238,7 @@ const TaskList: React.FC = () => {
                         <div className="flex items-center space-x-4 mt-3">
                           <div className="flex items-center space-x-2">
                             <User size={16} className="text-gray-400" />
-                            <span className="text-sm text-gray-600">{client?.name}</span>
+                            <span className="text-sm text-gray-600">{client?.name || 'Unknown Client'}</span>
                           </div>
                           <div className="flex items-center space-x-2">
                             <Clock size={16} className="text-gray-400" />

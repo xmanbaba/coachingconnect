@@ -31,6 +31,8 @@ export interface Session {
   agenda: string[];
   notes?: string;
   attachments?: Attachment[];
+  createdAt?: any; // Firestore Timestamp or ISO string
+  updatedAt?: any; // Firestore Timestamp or ISO string
 }
 
 export interface Task {
@@ -41,9 +43,10 @@ export interface Task {
   status: 'pending' | 'in-progress' | 'completed';
   priority: 'low' | 'medium' | 'high';
   clientId: string;
-  sessionId?: string;
+  sessionId?: string | null;
   assignedBy: string;
-  createdAt: string;
+  createdAt: string | any; // Can be Firestore Timestamp or ISO string
+  updatedAt?: any; // Firestore Timestamp or ISO string
 }
 
 export interface Attachment {

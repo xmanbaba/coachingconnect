@@ -1,37 +1,86 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, AlertCircle, Edit, Clock } from 'lucide-react';
-import { mockTasks, mockClients } from '../../data/mockData';
+import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import type { Task, Client } from '../../types';
 
 const TaskDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [isUpdating, setIsUpdating] = useState(false);
+  const [task, setTask] = useState<Task | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const task = mockTasks.find(t => t.id === id);
-  const client = task ? mockClients.find(c => c.id === task.clientId) : null;
+  // Fetch task data
+  useEffect(() => {
+    const fetchTask = async () => {
+      if (!id || !currentUser) {
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        const taskDoc = await getDoc(doc(db, 'tasks', id));
+        if (taskDoc.exists()) {
+          const taskData = {
+            id: taskDoc.id,
+            ...taskDoc.data(),
+            createdAt: taskDoc.data().createdAt?.toDate?.()?.toISOString() || taskDoc.data().createdAt,
+          } as Task;
+          
+          // Check if current user is authorized to view this task
+          if (taskData.assignedBy !== currentUser.uid) {
+            setError("You are not authorized to view this task");
+            setLoading(false);
+            return;
+          }
+          
+          setTask(taskData);
+          
+          // Fetch associated client
+          if (taskData.clientId) {
+            const clientDoc = await getDoc(doc(db, 'clients', taskData.clientId));
+            if (clientDoc.exists()) {
+              setClient({ id: clientDoc.id, ...clientDoc.data() } as Client);
+            }
+          }
+        } else {
+          setError("Task not found");
+        }
+              } catch (err: any) {
+        console.error("Error fetching task:", err);
+        setError("Failed to load task data");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  if (!task || !client) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">Task not found</p>
-        <button
-          onClick={() => navigate('/tasks')}
-          className="mt-4 text-blue-600 hover:text-blue-700"
-        >
-          Back to tasks
-        </button>
-      </div>
-    );
-  }
+    fetchTask();
+  }, [id, currentUser]);
 
   const handleStatusUpdate = async (newStatus: 'pending' | 'in-progress' | 'completed') => {
+    if (!task || !currentUser) return;
+    
     setIsUpdating(true);
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      await updateDoc(doc(db, 'tasks', task.id), {
+        status: newStatus,
+        updatedAt: Timestamp.now()
+      });
+      
+      // Update local state
+      setTask(prev => prev ? { ...prev, status: newStatus } : null);
+    } catch (err: any) {
+      console.error("Error updating task status:", err);
+      setError("Failed to update task status");
+    } finally {
       setIsUpdating(false);
-      // In real app, this would update the task status
-    }, 1000);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -50,10 +99,43 @@ const TaskDetail: React.FC = () => {
     }
   };
 
-  const isOverdue = task.status !== 'completed' && new Date(task.dueDate) < new Date();
+  const isOverdue = task && task.status !== 'completed' && new Date(task.dueDate) < new Date();
+
+  if (!currentUser) {
+    return <div className="text-red-600 p-6">Please sign in to view task details</div>;
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Loading task...</div>
+      </div>
+    );
+  }
+
+  if (error || !task) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-600 mb-4">{error || "Task not found"}</p>
+        <button
+          onClick={() => navigate('/tasks')}
+          className="text-blue-600 hover:text-blue-700"
+        >
+          Back to tasks
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg border border-red-200">
+          {error}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center space-x-4">
         <button
@@ -139,10 +221,10 @@ const TaskDetail: React.FC = () => {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Update Status</h3>
             <div className="flex flex-wrap gap-3">
-              {['pending', 'in-progress', 'completed'].map((status) => (
+              {(['pending', 'in-progress', 'completed'] as const).map((status) => (
                 <button
                   key={status}
-                  onClick={() => handleStatusUpdate(status as any)}
+                  onClick={() => handleStatusUpdate(status)}
                   disabled={isUpdating || task.status === status}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     task.status === status
@@ -167,23 +249,25 @@ const TaskDetail: React.FC = () => {
         {/* Sidebar */}
         <div className="space-y-6">
           {/* Client Info */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Assigned To</h3>
-            <div 
-              className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-              onClick={() => navigate(`/clients/${client.id}`)}
-            >
-              <img
-                src={client.avatar}
-                alt={client.name}
-                className="w-10 h-10 rounded-full object-cover"
-              />
-              <div className="flex-1">
-                <p className="font-medium text-gray-900">{client.name}</p>
-                <p className="text-sm text-gray-600">{client.industry}</p>
+          {client && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Assigned To</h3>
+              <div 
+                className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                onClick={() => navigate(`/clients/${client.id}`)}
+              >
+                <img
+                  src={client.avatar}
+                  alt={client.name}
+                  className="w-10 h-10 rounded-full object-cover"
+                />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900">{client.name}</p>
+                  <p className="text-sm text-gray-600">{client.industry}</p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Quick Actions */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -195,18 +279,22 @@ const TaskDetail: React.FC = () => {
               >
                 Edit task details
               </button>
-              <button
-                onClick={() => navigate(`/clients/${client.id}`)}
-                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-              >
-                View client profile
-              </button>
-              <button
-                onClick={() => navigate(`/tasks/new?clientId=${client.id}`)}
-                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-              >
-                Create related task
-              </button>
+              {client && (
+                <>
+                  <button
+                    onClick={() => navigate(`/clients/${client.id}`)}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    View client profile
+                  </button>
+                  <button
+                    onClick={() => navigate(`/tasks/new?clientId=${client.id}`)}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    Create related task
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
