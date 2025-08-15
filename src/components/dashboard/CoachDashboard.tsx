@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Users, CheckSquare, TrendingUp, Clock, AlertTriangle, Plus } from 'lucide-react';
+import { Calendar, Users, CheckSquare, Clock, AlertTriangle, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { mockDashboardStats, mockClients, mockSessions, mockTasks } from '../../data/mockData';
 

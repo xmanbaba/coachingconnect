@@ -10,8 +10,7 @@ import {
   Plus,
   CheckSquare,
   Clock,
-  User,
-  Building
+  User
 } from 'lucide-react';
 import { mockClients, mockSessions, mockTasks } from '../../data/mockData';
 

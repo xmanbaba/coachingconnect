@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, CheckSquare, Clock, User, BookOpen, Target } from 'lucide-react';
+import { Calendar, CheckSquare, User, BookOpen, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { mockSessions, mockTasks, mockClients } from '../../data/mockData';
 

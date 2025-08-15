@@ -4,14 +4,14 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBqJw5Z8X9Y7V6U5T4S3R2Q1P0O9N8M7L6K",
-  authDomain: "coaching-app-demo.firebaseapp.com",
-  projectId: "coaching-app-demo",
-  storageBucket: "coaching-app-demo.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef123456789012345678"
+  apiKey: "AIzaSyBOAmgh6q9SjykFi9nLrpct6NIlFiaPHFo",
+  authDomain: "coaching-connect-3d5af.firebaseapp.com",
+  projectId: "coaching-connect-3d5af",
+  storageBucket: "coaching-connect-3d5af.firebasestorage.app",
+  messagingSenderId: "1070767870022",
+  appId: "1:1070767870022:web:93d04c99dfd237b1d9ba47",
+  measurementId: "G-W59RNQXF76"
 };
-
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 

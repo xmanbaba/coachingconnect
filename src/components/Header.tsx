@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, Search, User, Menu, X } from 'lucide-react';
+import { Bell, Search, Menu, X } from 'lucide-react';
 import { mockNotifications } from '../data/mockData';
 import { useAuth } from '../contexts/AuthContext';
 

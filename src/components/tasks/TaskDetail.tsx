@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, User, AlertCircle, CheckSquare, Edit, Clock } from 'lucide-react';
+import { ArrowLeft, Calendar, AlertCircle, Edit, Clock } from 'lucide-react';
 import { mockTasks, mockClients } from '../../data/mockData';
 
 const TaskDetail: React.FC = () => {
