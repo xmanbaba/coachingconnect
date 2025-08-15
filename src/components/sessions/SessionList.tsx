@@ -1,23 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Filter, Calendar, Users, User, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { mockClients } from '../../data/mockData';
+// import { mockClients } from '../../data/mockData'; // 🔥 remove
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import { Session, Client } from '../../types'; // Import types from index.ts
+import { Session, Client } from '../../types';
 
 const SessionList: React.FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'one-on-one' | 'group'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'scheduled' | 'completed' | 'cancelled'>('all');
-  const [sessions, setSessions] = useState<Session[]>([]); // Use Session type
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [clients, setClients] = useState<Client[]>([]); // 🔥 Add clients state
 
+  // 🔥 Fetch sessions from Firestore
   useEffect(() => {
     const q = query(collection(db, 'sessions'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Session));
       setSessions(data);
+    });
+    return unsub;
+  }, []);
+
+  // 🔥 Fetch clients from Firestore
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'clients'), (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+      setClients(data);
     });
     return unsub;
   }, []);
@@ -156,8 +167,9 @@ const SessionList: React.FC = () => {
         </div>
         <div className="divide-y divide-gray-200">
           {filteredSessions.map((session) => {
-            const clients: Client[] = session.clientIds
-              .map((id: string) => mockClients.find(c => c.id === id))
+            // 🔥 Use clients from Firestore instead of mockClients
+            const sessionClients: Client[] = session.clientIds
+              .map((id: string) => clients.find(c => c.id === id))
               .filter((client): client is Client => Boolean(client));
 
             return (
@@ -185,19 +197,13 @@ const SessionList: React.FC = () => {
                         
                         <div className="flex items-center space-x-4 mt-3">
                           <div className="flex items-center space-x-2">
-                            <Calendar size={16} className="text-gray-400" />
-                            <span className="text-sm text-gray-600">
-                              {new Date(session.date).toLocaleDateString()} at {session.time}
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-2">
                             <Clock size={16} className="text-gray-400" />
                             <span className="text-sm text-gray-600">{session.duration} minutes</span>
                           </div>
                           {session.type === 'group' && (
                             <div className="flex items-center space-x-2">
                               <Users size={16} className="text-gray-400" />
-                              <span className="text-sm text-gray-600">{clients.length} participants</span>
+                              <span className="text-sm text-gray-600">{sessionClients.length} participants</span>
                             </div>
                           )}
                         </div>
@@ -208,7 +214,7 @@ const SessionList: React.FC = () => {
                             <div>
                               <p className="text-sm text-gray-600 mb-2">Participants:</p>
                               <div className="flex flex-wrap gap-2">
-                                {clients.map((client: Client) => (
+                                {sessionClients.map((client: Client) => (
                                   <div key={client.id} className="flex items-center space-x-2 bg-gray-100 rounded-full px-3 py-1">
                                     <img
                                       src={client.avatar}
@@ -221,14 +227,14 @@ const SessionList: React.FC = () => {
                               </div>
                             </div>
                           ) : (
-                            clients[0] && (
+                            sessionClients[0] && (
                               <div className="flex items-center space-x-2">
                                 <img
-                                  src={clients[0].avatar}
-                                  alt={clients[0].name}
+                                  src={sessionClients[0].avatar}
+                                  alt={sessionClients[0].name}
                                   className="w-6 h-6 rounded-full object-cover"
                                 />
-                                <span className="text-sm text-gray-600">{clients[0].name}</span>
+                                <span className="text-sm text-gray-600">{sessionClients[0].name}</span>
                               </div>
                             )
                           )}
@@ -294,4 +300,4 @@ const SessionList: React.FC = () => {
   );
 };
 
-export default SessionList;
+export default SessionList;         

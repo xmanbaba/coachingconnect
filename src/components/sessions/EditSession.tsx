@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
@@ -10,22 +10,36 @@ import {
   Plus,
   X,
 } from "lucide-react";
-// import { mockClients } from "../../data/mockData"; // 🔥 remove
-import { collection, addDoc, Timestamp, onSnapshot } from "firebase/firestore"; // 🔥 add onSnapshot
+import { collection, doc, updateDoc, onSnapshot, getDoc, Timestamp } from "firebase/firestore";
 import { db } from "../../config/firebase";
 import { useAuth } from "../../contexts/AuthContext";
-import type { Client } from "../../types"; // 🔥 add
+import type { Client, Session } from "../../types";
 
-const CreateSession: React.FC = () => {
+const EditSession: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [searchParams] = useSearchParams();
-  const preselectedClientId = searchParams.get("clientId");
-  const sessionType = searchParams.get("type") || "one-on-one";
-
-  // 🔥 Add clients state and fetch from Firestore
-  const [clients, setClients] = useState<Client[]>([]);
+  const { id } = useParams<{ id: string }>();
   
+  const [clients, setClients] = useState<Client[]>([]);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  const [formData, setFormData] = useState({
+    title: "",
+    description: "",
+    date: "",
+    time: "",
+    duration: 60,
+    type: "one-on-one" as "one-on-one" | "group",
+    clientIds: [] as string[],
+    agenda: [""] as string[],
+    status: "scheduled" as "scheduled" | "completed" | "cancelled"
+  });
+  
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Fetch clients from Firestore
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'clients'), (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
@@ -34,23 +48,46 @@ const CreateSession: React.FC = () => {
     return unsub;
   }, []);
 
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    date: "",
-    time: "",
-    duration: 60,
-    type: sessionType as "one-on-one" | "group",
-    clientIds: preselectedClientId ? [preselectedClientId] : ([] as string[]),
-    agenda: [""] as string[],
-    coachId: currentUser?.uid || "unknown",
-  });
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Fetch session data
+  useEffect(() => {
+    const fetchSession = async () => {
+      if (!id) return;
+      
+      try {
+        const sessionDoc = await getDoc(doc(db, 'sessions', id));
+        if (sessionDoc.exists()) {
+          const sessionData = { id: sessionDoc.id, ...sessionDoc.data() } as Session;
+          setSession(sessionData);
+          
+          // Populate form with session data
+          setFormData({
+            title: sessionData.title,
+            description: sessionData.description,
+            date: sessionData.date,
+            time: sessionData.time,
+            duration: sessionData.duration,
+            type: sessionData.type,
+            clientIds: sessionData.clientIds,
+            agenda: sessionData.agenda.length > 0 ? sessionData.agenda : [""],
+            status: sessionData.status
+          });
+        } else {
+          setError("Session not found");
+        }
+      } catch (err: any) {
+        console.error("Error fetching session:", err);
+        setError("Failed to load session data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSession();
+  }, [id]);
 
   const validateForm = () => {
     if (!currentUser) {
-      setError("You must be signed in to create a session");
+      setError("You must be signed in to edit a session");
       return false;
     }
     if (!formData.title.trim()) {
@@ -83,7 +120,7 @@ const CreateSession: React.FC = () => {
     setError(null);
     setIsSubmitting(true);
 
-    if (!validateForm()) {
+    if (!validateForm() || !id) {
       setIsSubmitting(false);
       return;
     }
@@ -91,16 +128,16 @@ const CreateSession: React.FC = () => {
     try {
       const sessionData = {
         ...formData,
-        status: "scheduled",
-        createdAt: Timestamp.now(),
         agenda: formData.agenda.filter(item => item.trim()),
+        updatedAt: Timestamp.now(),
       };
-      console.log("Submitting session data:", sessionData);
-      await addDoc(collection(db, "sessions"), sessionData);
+      
+      console.log("Updating session data:", sessionData);
+      await updateDoc(doc(db, "sessions", id), sessionData);
       navigate("/sessions");
     } catch (err: any) {
-      console.error("Error creating session:", err);
-      setError(err.message || "Failed to create session");
+      console.error("Error updating session:", err);
+      setError(err.message || "Failed to update session");
       setIsSubmitting(false);
     }
   };
@@ -122,7 +159,9 @@ const CreateSession: React.FC = () => {
       ...prev,
       clientIds: prev.clientIds.includes(clientId)
         ? prev.clientIds.filter((id) => id !== clientId)
-        : [...prev.clientIds, clientId],
+        : formData.type === "one-on-one" 
+          ? [clientId] // For one-on-one, replace the selection
+          : [...prev.clientIds, clientId], // For group, add to selection
     }));
   };
 
@@ -147,20 +186,41 @@ const CreateSession: React.FC = () => {
     }));
   };
 
-  // 🔥 Use clients from Firestore instead of mockClients
   const selectedClients = clients.filter((client) =>
     formData.clientIds.includes(client.id)
   );
 
   if (!currentUser) {
-    return <div className="text-red-600 p-6">Please sign in to create a session</div>;
+    return <div className="text-red-600 p-6">Please sign in to edit a session</div>;
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Loading session...</div>
+      </div>
+    );
+  }
+
+  if (error && !session) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-600 mb-4">{error}</p>
+        <button
+          onClick={() => navigate('/sessions')}
+          className="text-blue-600 hover:text-blue-700"
+        >
+          Back to sessions
+        </button>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       {/* Error Display */}
       {error && (
-        <div className="bg-red-50 text-red-700 p-4 rounded-lg">
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg border border-red-200">
           {error}
         </div>
       )}
@@ -175,10 +235,10 @@ const CreateSession: React.FC = () => {
         </button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Create {formData.type === "group" ? "Group" : "One-on-One"} Session
+            Edit {formData.type === "group" ? "Group" : "One-on-One"} Session
           </h1>
           <p className="text-gray-600">
-            Schedule a new coaching session with your clients.
+            Update the session details and participants.
           </p>
         </div>
       </div>
@@ -266,7 +326,7 @@ const CreateSession: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {/* Date */}
             <div>
               <label
@@ -287,7 +347,6 @@ const CreateSession: React.FC = () => {
                   required
                   value={formData.date}
                   onChange={handleChange}
-                  min={new Date().toISOString().split("T")[0]}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 />
               </div>
@@ -339,6 +398,28 @@ const CreateSession: React.FC = () => {
                 <option value={60}>60 minutes</option>
                 <option value={90}>90 minutes</option>
                 <option value={120}>120 minutes</option>
+              </select>
+            </div>
+
+            {/* Status */}
+            <div>
+              <label
+                htmlFor="status"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Status *
+              </label>
+              <select
+                id="status"
+                name="status"
+                required
+                value={formData.status}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              >
+                <option value="scheduled">Scheduled</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </div>
           </div>
@@ -481,12 +562,12 @@ const CreateSession: React.FC = () => {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  Creating Session...
+                  Updating Session...
                 </>
               ) : (
                 <>
                   <Calendar size={20} />
-                  <span>Create Session</span>
+                  <span>Update Session</span>
                 </>
               )}
             </button>
@@ -504,4 +585,4 @@ const CreateSession: React.FC = () => {
   );
 };
 
-export default CreateSession;
+export default EditSession;
