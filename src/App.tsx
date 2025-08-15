@@ -1,4 +1,3 @@
-
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -9,6 +8,7 @@ import CoachDashboard from './components/dashboard/CoachDashboard';
 import ClientDashboard from './components/dashboard/ClientDashboard';
 import ClientList from './components/clients/ClientList';
 import ClientProfile from './components/clients/ClientProfile';
+import CreateClient from './components/clients/CreateClient'; // Add this import
 import SessionList from './components/sessions/SessionList';
 import CreateSession from './components/sessions/CreateSession';
 import TaskList from './components/tasks/TaskList';
@@ -32,6 +32,7 @@ function App() {
               <Route path="dashboard" element={<CoachDashboard />} />
               <Route path="client-dashboard" element={<ClientDashboard />} />
               <Route path="clients" element={<ClientList />} />
+              <Route path="clients/new" element={<CreateClient />} /> {/* Add this route */}
               <Route path="clients/:id" element={<ClientProfile />} />
               <Route path="sessions" element={<SessionList />} />
               <Route path="sessions/new" element={<CreateSession />} />
