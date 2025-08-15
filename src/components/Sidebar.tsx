@@ -1,9 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Users, Calendar, CheckSquare, BarChart3, Settings, Group as UserGroup, LogOut } from 'lucide-react';
-import { currentUser } from '../data/mockData';
+import { useAuth } from '../contexts/AuthContext';
 
 const Sidebar: React.FC = () => {
+  const { currentUser, userRole, logout } = useAuth();
+
   const navigationItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/clients', icon: Users, label: 'Clients' },
@@ -14,6 +16,14 @@ const Sidebar: React.FC = () => {
     { to: '/settings', icon: Settings, label: 'Settings' },
   ];
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Failed to log out:', error);
+    }
+  };
+
   return (
     <>
       {/* Desktop Sidebar */}
@@ -23,13 +33,13 @@ const Sidebar: React.FC = () => {
             {/* User info */}
             <div className="flex items-center px-4 mb-6">
               <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
+                src={currentUser?.photoURL || 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop'}
+                alt={currentUser?.displayName || 'User'}
                 className="w-12 h-12 rounded-full object-cover"
               />
               <div className="ml-3">
-                <p className="text-sm font-medium text-gray-900">{currentUser.name}</p>
-                <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
+                <p className="text-sm font-medium text-gray-900">{currentUser?.displayName || currentUser?.email}</p>
+                <p className="text-xs text-gray-500 capitalize">{userRole}</p>
               </div>
             </div>
 
@@ -57,7 +67,10 @@ const Sidebar: React.FC = () => {
 
             {/* Logout */}
             <div className="px-2 mt-auto">
-              <button className="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors w-full">
+              <button 
+                onClick={handleLogout}
+                className="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors w-full"
+              >
                 <LogOut className="mr-3 flex-shrink-0 h-5 w-5" />
                 Logout
               </button>

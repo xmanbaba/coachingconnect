@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Bell, Search, User, Menu, X } from 'lucide-react';
-import { currentUser, mockNotifications } from '../data/mockData';
+import { mockNotifications } from '../data/mockData';
+import { useAuth } from '../contexts/AuthContext';
 
 const Header: React.FC = () => {
+  const { currentUser, userRole } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const unreadCount = mockNotifications.filter(n => !n.isRead).length;
@@ -97,13 +99,13 @@ const Header: React.FC = () => {
           {/* User profile */}
           <div className="flex items-center space-x-3">
             <img
-              src={currentUser.avatar}
-              alt={currentUser.name}
+              src={currentUser?.photoURL || 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop'}
+              alt={currentUser?.displayName || 'User'}
               className="w-8 h-8 rounded-full object-cover"
             />
             <div className="hidden sm:block">
-              <p className="text-sm font-medium text-gray-900">{currentUser.name}</p>
-              <p className="text-xs text-gray-500 capitalize">{currentUser.role}</p>
+              <p className="text-sm font-medium text-gray-900">{currentUser?.displayName || currentUser?.email}</p>
+              <p className="text-xs text-gray-500 capitalize">{userRole}</p>
             </div>
           </div>
         </div>
