@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';                          // 🔥 add useEffect
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -12,25 +12,84 @@ import {
   Clock,
   User
 } from 'lucide-react';
-// import { mockClients, mockSessions, mockTasks } from '../../data/mockData'; // 🔥 remove
-import { doc, onSnapshot } from 'firebase/firestore';                        // 🔥 add
-import { db } from '../../config/firebase';                                         // 🔥 add
-import type { Client } from '../../types';                                   // 🔥 add
+import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+import type { Client, Task, Session } from '../../types';
 
 const ClientProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'tasks' | 'timeline'>('overview');
 
-  // 🔥 live client doc
+  // ✅ FIX: Add proper state management for client, tasks, and sessions
   const [client, setClient] = useState<Client | null>(null);
+  const [clientTasks, setClientTasks] = useState<Task[]>([]);
+  const [clientSessions, setClientSessions] = useState<Session[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch client data
   useEffect(() => {
     if (!id) return;
-    const unsub = onSnapshot(doc(db, 'clients', id), snap =>
-      setClient(snap.exists() ? ({ id: snap.id, ...snap.data() } as Client) : null)
-    );
+
+    const unsub = onSnapshot(doc(db, 'clients', id), snap => {
+      setClient(snap.exists() ? ({ id: snap.id, ...snap.data() } as Client) : null);
+      setLoading(false);
+    });
+
     return unsub;
   }, [id]);
+
+  // ✅ FIX: Fetch tasks assigned to this client
+  useEffect(() => {
+    if (!id) return;
+
+    const unsubTasks = onSnapshot(
+      query(collection(db, 'tasks'), where('clientId', '==', id)),
+      (snap) => {
+        const tasks = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
+        } as Task));
+        setClientTasks(tasks);
+      },
+      (error) => {
+        console.error("Error fetching client tasks:", error);
+      }
+    );
+
+    return unsubTasks;
+  }, [id]);
+
+  // ✅ FIX: Fetch sessions for this client
+  useEffect(() => {
+    if (!id) return;
+
+    const unsubSessions = onSnapshot(
+      query(collection(db, 'sessions'), where('clientIds', 'array-contains', id)),
+      (snap) => {
+        const sessions = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().createdAt,
+        } as Session));
+        setClientSessions(sessions);
+      },
+      (error) => {
+        console.error("Error fetching client sessions:", error);
+      }
+    );
+
+    return unsubSessions;
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-gray-500">Loading client...</div>
+      </div>
+    );
+  }
 
   if (!client) {
     return (
@@ -46,9 +105,7 @@ const ClientProfile: React.FC = () => {
     );
   }
 
-  // 🔥 TODO: sessions/tasks will be fetched from Firestore later; keep empty arrays for now
-  const clientSessions: any[] = [];
-  const clientTasks: any[] = [];
+  // ✅ FIX: Calculate stats from real data
   const completedTasks = clientTasks.filter(task => task.status === 'completed');
   const pendingTasks = clientTasks.filter(task => task.status !== 'completed');
 
@@ -113,7 +170,7 @@ const ClientProfile: React.FC = () => {
                   <Calendar size={16} />
                   <span className="text-sm">Total Sessions</span>
                 </div>
-                <p className="font-medium text-gray-900 mt-1">{client.totalSessions}</p>
+                <p className="font-medium text-gray-900 mt-1">{clientSessions.length}</p>
               </div>
               <div className="text-center sm:text-left">
                 <div className="flex items-center justify-center sm:justify-start space-x-2 text-gray-600">
@@ -217,7 +274,11 @@ const ClientProfile: React.FC = () => {
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
                 <div className="space-y-4">
-                  {clientSessions.slice(0, 3).map((session) => (
+                  {/* Show recent sessions */}
+                  {clientSessions
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .slice(0, 3)
+                    .map((session) => (
                     <div key={session.id} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
                       <Calendar className="text-blue-500" size={20} />
                       <div className="flex-1">
@@ -301,6 +362,7 @@ const ClientProfile: React.FC = () => {
             </div>
           )}
 
+          {/* ✅ FIX: Display actual tasks from Firestore */}
           {activeTab === 'tasks' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -313,42 +375,62 @@ const ClientProfile: React.FC = () => {
                   <span>Assign Task</span>
                 </button>
               </div>
-              {clientTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                  onClick={() => navigate(`/tasks/${task.id}`)}
-                >
-                  <div
-                    className={`w-3 h-3 rounded-full flex-shrink-0 ${
-                      task.status === 'completed'
-                        ? 'bg-green-500'
-                        : task.status === 'in-progress'
-                        ? 'bg-yellow-500'
-                        : 'bg-gray-400'
-                    }`}
-                  />
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{task.title}</p>
-                    <p className="text-sm text-gray-600">{task.description}</p>
-                    <p className="text-sm text-gray-500">
-                      Due: {new Date(task.dueDate).toLocaleDateString()} •
-                      <span className="capitalize"> {task.priority} priority</span>
-                    </p>
+              
+              {clientTasks.length === 0 ? (
+                <div className="text-center py-8">
+                  <CheckSquare className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No tasks assigned</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Get started by assigning the first task to this client.
+                  </p>
+                  <div className="mt-6">
+                    <button
+                      onClick={() => navigate(`/tasks/new?clientId=${client.id}`)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors mx-auto"
+                    >
+                      <Plus size={20} />
+                      <span>Assign First Task</span>
+                    </button>
                   </div>
-                  <span
-                    className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      task.status === 'completed'
-                        ? 'bg-green-100 text-green-800'
-                        : task.status === 'in-progress'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
-                  >
-                    {task.status.replace('-', ' ')}
-                  </span>
                 </div>
-              ))}
+              ) : (
+                clientTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/tasks/${task.id}`)}
+                  >
+                    <div
+                      className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                        task.status === 'completed'
+                          ? 'bg-green-500'
+                          : task.status === 'in-progress'
+                          ? 'bg-yellow-500'
+                          : 'bg-gray-400'
+                      }`}
+                    />
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{task.title}</p>
+                      <p className="text-sm text-gray-600 line-clamp-2">{task.description}</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Due: {new Date(task.dueDate).toLocaleDateString()} •
+                        <span className="capitalize"> {task.priority} priority</span>
+                      </p>
+                    </div>
+                    <span
+                      className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        task.status === 'completed'
+                          ? 'bg-green-100 text-green-800'
+                          : task.status === 'in-progress'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      {task.status.replace('-', ' ')}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           )}
 
@@ -361,8 +443,8 @@ const ClientProfile: React.FC = () => {
                   {[...clientSessions, ...clientTasks]
                     .sort(
                       (a, b) =>
-                        new Date(b.createdAt || b.date).getTime() -
-                        new Date(a.createdAt || a.date).getTime()
+                        new Date(b.createdAt || (a as any).date).getTime() -
+                        new Date(a.createdAt || (a as any).date).getTime()
                     )
                     .slice(0, 10)
                     .map((item) => {

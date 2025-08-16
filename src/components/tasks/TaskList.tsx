@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+ import React, { useState, useEffect } from 'react';
 import { Search, Plus, Filter, CheckSquare, Clock, AlertTriangle, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
@@ -90,6 +90,12 @@ const TaskList: React.FC = () => {
   const completedTasks = tasks.filter(t => t.status === 'completed').length;
   const inProgressTasks = tasks.filter(t => t.status === 'in-progress').length;
   const overdueTasks = tasks.filter(t => isOverdue(t.dueDate, t.status)).length;
+
+  // ✅ FIX: Handle client name click to navigate to client profile
+  const handleClientClick = (e: React.MouseEvent, clientId: string) => {
+    e.stopPropagation(); // Prevent task row click
+    navigate(`/clients/${clientId}`);
+  };
 
   if (!currentUser) {
     return <div className="text-red-600 p-6">Please sign in to view tasks</div>;
@@ -236,9 +242,15 @@ const TaskList: React.FC = () => {
                         <p className="text-sm text-gray-600 mt-1 line-clamp-2">{task.description}</p>
                         
                         <div className="flex items-center space-x-4 mt-3">
+                          {/* ✅ FIX: Make client name clickable and navigate to client profile */}
                           <div className="flex items-center space-x-2">
                             <User size={16} className="text-gray-400" />
-                            <span className="text-sm text-gray-600">{client?.name || 'Unknown Client'}</span>
+                            <button
+                              onClick={(e) => client && handleClientClick(e, client.id)}
+                              className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                            >
+                              {client?.name || 'Unknown Client'}
+                            </button>
                           </div>
                           <div className="flex items-center space-x-2">
                             <Clock size={16} className="text-gray-400" />
